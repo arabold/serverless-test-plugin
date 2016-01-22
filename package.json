@@ -1,0 +1,41 @@
+{
+  "name": "serverless-test-plugin",
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=4.0"
+  },
+  "description": "Serverless Test Plugin - Tests serverless endpoints.",
+  "author": "serverless.com",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/serverless/serverless-plugin-boilerplate"
+  },
+  "keywords": [
+    "serverless plugin test",
+    "serverless plugin junit",
+    "serverless framework plugin",
+    "serverless applications",
+    "serverless plugins",
+    "api gateway",
+    "lambda",
+    "aws",
+    "aws lambda",
+    "amazon",
+    "amazon web services",
+    "serverless.com"
+  ],
+  "main": "index.js",
+  "bin": {},
+  "scripts": {
+    "test": "mocha tests/all"
+  },
+  "devDependencies": {
+  },
+  "dependencies": {
+    "chalk": "^1.1.0",
+    "bluebird": "^3.0.6",
+    "aws-lambda-mock-context": "^1.1.0",
+    "junitwriter": "^0.3.1"
+  }
+}
