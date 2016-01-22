@@ -11,7 +11,8 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 		BbPromise   = require('bluebird'),
 		chalk       = require('chalk'),
 		SCli        = require( path.join( serverlessPath, 'utils', 'cli' ) ),
-		JUnitWriter = require("junitwriter");
+		JUnitWriter = require("junitwriter"),
+		intercept   = require("intercept-stdout");
 
 	/**
 	 * ServerlessPluginBoierplate
@@ -153,8 +154,14 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 							event = require(eventPath);
 
 						// Okay, let's go and execute the handler
+						// We intercept all stdout from the function and dump
+						// it into our test results instead.
 						SCli.log("Testing " + f._config.sPath + "...");
-						let testCase = funcTestSuite.addTestcase("should succeed", f.handler);
+						let testCase = funcTestSuite.addTestcase("should succeed", f._config.sPath);
+						let capturedText = "";
+						let unhookIntercept = intercept(function(txt) {
+							capturedText += txt;
+						});
 
 						let startTime = Date.now();
 						let ctx = context();
@@ -162,8 +169,11 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 
 						// Wait for the handler script to finish...
 						return ctx.Promise.then(function(result) {
+							unhookIntercept(); // stop intercepting stdout
 							let duration = (Date.now() - startTime) / 1000;
+
 							testCase.setTime(duration);
+							testCase.setSystemOut(capturedText);
 							if (duration > f.timeout) {
 								let msg = "Timeout of " + f.timeout + " seconds exceeded";
 								testCase.addFailure(msg, "Timeout");
@@ -177,9 +187,12 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 								succeeded++;
 							}
 						}).catch(function(err) {
-							testCase.addFailure(err.toString(), "Error");
+							unhookIntercept(); // stop intercepting stdout
 							let duration = (Date.now() - startTime) / 1000;
+
 							testCase.setTime(duration);
+							testCase.addFailure(err.toString(), "Failed");
+							testCase.setSystemOut(capturedText);
 
 							// Done with errors.
 							SCli.log(chalk.bgRed.white(" ERROR ") + " " +

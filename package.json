@@ -1,6 +1,6 @@
 {
   "name": "serverless-test-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "engines": {
     "node": ">=4.0"
   },
@@ -36,6 +36,7 @@
     "chalk": "^1.1.0",
     "bluebird": "^3.0.6",
     "aws-lambda-mock-context": "^1.1.0",
-    "junitwriter": "^0.3.1"
+    "junitwriter": "^0.3.1",
+    "intercept-stdout": "^0.1.2"
   }
 }
