@@ -2,20 +2,6 @@
 
 /**
  * Serverless Test Plugin
- * - Useful example/starter code for writing a plugin for the Serverless Framework.
- * - In a plugin, you can:
- *    - Create a Custom Action that can be called via the CLI or programmatically via a function handler.
- *    - Overwrite a Core Action that is included by default in the Serverless Framework.
- *    - Add a hook that fires before or after a Core Action or a Custom Action
- *    - All of the above at the same time :)
- *
- * - Setup:
- *    - Make a Serverless Project dedicated for plugin development, or use an existing Serverless Project
- *    - Make a "plugins" folder in the root of your Project and copy this codebase into it. Title it your custom plugin name with the suffix "-dev", like "myplugin-dev"
- *    - Run "npm link" in your plugin, then run "npm link myplugin" in the root of your project.
- *    - Start developing!
- *
- * - Good luck, serverless.com :)
  */
 
 module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in the ServerlessPlugin Class
@@ -116,9 +102,11 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 
 				let functions;
 				if (evt.options.all) {
+					// Load all functions
 					functions = _this.S.state.getFunctions();
 				}
 				else if (evt.options.paths) {
+					// Load individual functions as specified in command line
 					functions = _this.S.state.getFunctions({ paths: evt.options.paths });
 				}
 
@@ -127,7 +115,6 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 				}
 
 				let testWriter = new JUnitWriter();
-
 				let count = 0, succeeded = 0, failed = 0;
 				BbPromise.each(functions, function(f) {
 					let funcTestSuite = testWriter.addTestsuite(f._config.sPath);
@@ -138,54 +125,65 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 						let component = f._config.component;
 						let handlerPath = path.join(_this.S.config.projectPath, component, handler[0]);
 
+						// TODO Should we skip a function that's explicitly specified via command line option?
 						if (f.custom.test && f.custom.test.skip) {
 							SCli.log("Skipping " + f._config.sPath);
 							funcTestSuite.setSkipped(true);
 							return; // skip this function
 						}
 
-						let code;
+						// Load the handler code
+						let script;
 						try {
-							code = require(handlerPath);
+							script = require(handlerPath);
+							if (!script[handler[1]]) {
+								let err = "Handler function " + f.handler + " not found";
+								return reject(err);
+							}
 						}
 						catch (err) {
 							return reject(err);
 						}
 
+						// Load the sample event (defaults to the 'event.json' in the function directory)
 						let event = {};
 						let eventFile = (f.custom.test ? f.custom.test.event : false) || "event.json";
 						let eventPath = path.join(f._config.fullPath, eventFile);
 						if (fs.statSync(eventPath).isFile())
 							event = require(eventPath);
 
-						if (!code[handler[1]]) {
-							let err = "Handler function " + f.handler + " not found";
-							return reject(err);
-						}
-
+						// Okay, let's go and execute the handler
 						SCli.log("Testing " + f._config.sPath + "...");
+						let testCase = funcTestSuite.addTestcase("should succeed", f.handler);
 
 						let startTime = Date.now();
 						let ctx = context();
-						code[handler[1]](event, ctx);
+						script[handler[1]](event, ctx);
 
-						let testCase = funcTestSuite.addTestcase("should succeed", f.handler);
-
+						// Wait for the handler script to finish...
 						return ctx.Promise.then(function(result) {
 							let duration = (Date.now() - startTime) / 1000;
 							testCase.setTime(duration);
-							if (duration > f.timeout)
-								testCase.addFailure("Timeout of " + f.timeout + " seconds exceeded", "Error");
+							if (duration > f.timeout) {
+								let msg = "Timeout of " + f.timeout + " seconds exceeded";
+								testCase.addFailure(msg, "Timeout");
 
-							SCli.log(chalk.green("Success!"));
-							succeeded++;
+								SCli.log(chalk.bgMagenta.white(" TIMEOUT ") + " " + chalk.magenta(msg));
+								failed++;
+							}
+							else {
+								// Done.
+								SCli.log(chalk.green("Success!"));
+								succeeded++;
+							}
 						}).catch(function(err) {
-							funcTestSuite.addFailure(err.toString(), "Error");
+							testCase.addFailure(err.toString(), "Error");
 							let duration = (Date.now() - startTime) / 1000;
 							testCase.setTime(duration);
 
+							// Done with errors.
 							SCli.log(chalk.bgRed.white(" ERROR ") + " " +
-									chalk.red(err));
+									chalk.red(err.toString()));
 							failed++;
 						});
 					}
@@ -194,6 +192,7 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 						funcTestSuite.setSkipped(true);
 					}
 				}).then(function() {
+					// All done. Print a summary and write the test results
 					SCli.log("Tests completed: " + chalk.green(String(succeeded) + " succeeded") + " / " +
 							chalk.red(String(failed) + " failed") + " / " + 
 							chalk.white(String(count - succeeded - failed) + " skipped"));
@@ -209,8 +208,7 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 					resolve(evt);
 					process.exit(); // FIXME force exit
 				}).catch(function(err) {
-					SCli.log(chalk.red(err));
-					reject(evt);
+					reject(err);
 				});
 			});
 		}
@@ -221,5 +219,3 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 	return ServerlessPluginBoilerplate;
 
 };
-
-//Godspeed!
