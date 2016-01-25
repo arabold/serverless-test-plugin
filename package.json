@@ -1,15 +1,15 @@
 {
   "name": "serverless-test-plugin",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "engines": {
     "node": ">=4.0"
   },
-  "description": "Serverless Test Plugin - Tests serverless endpoints.",
-  "author": "serverless.com",
+  "description": "Serverless Test Plugin - Integration Tests for the Serverless Framework.",
+  "author": "arabold",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/serverless/serverless-plugin-boilerplate"
+    "url": "https://github.com/arabold/serverless-test-plugin"
   },
   "keywords": [
     "serverless plugin test",
@@ -27,9 +27,6 @@
   ],
   "main": "index.js",
   "bin": {},
-  "scripts": {
-    "test": "mocha tests/all"
-  },
   "devDependencies": {
   },
   "dependencies": {
