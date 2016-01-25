@@ -10,7 +10,10 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 		fs          = require('fs'),
 		BbPromise   = require('bluebird'),
 		chalk       = require('chalk'),
+		SError      = require(path.join(serverlessPath, 'ServerlessError')),
+		SUtils      = require(path.join(serverlessPath, 'utils')),
 		SCli        = require( path.join( serverlessPath, 'utils', 'cli' ) ),
+		context     = require( path.join( serverlessPath, 'utils', 'context' ) ),
 		JUnitWriter = require("junitwriter"),
 		intercept   = require("intercept-stdout");
 
@@ -18,7 +21,7 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 	 * ServerlessPluginBoierplate
 	 */
 
-	class ServerlessPluginBoilerplate extends ServerlessPlugin {
+	class ServerlessTestPlugin extends ServerlessPlugin {
 
 		/**
 		 * Constructor
@@ -35,7 +38,7 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 		 */
 
 		static getName() {
-			return 'com.serverless.' + ServerlessPluginBoilerplate.name;
+			return 'com.serverless.' + ServerlessTestPlugin.name;
 		}
 
 		/**
@@ -93,14 +96,13 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 		_runFunctionTest(evt) {
 
 			let _this = this;
-			let context = require("aws-lambda-mock-context");
 
 			return new BbPromise(function (resolve, reject) {
 
-				// SCli.log(evt)           // Contains Action Specific data
-				// SCli.log(_this.S)       // Contains Project Specific data
-				// SCli.log(_this.S.state) // Contains tons of useful methods for you to use in your plugin.  It's the official API for plugin developers.
+				// Prepare result object
+				evt.data.result = { status: false };
 
+				// Instantiate Classes
 				let functions;
 				if (evt.options.all) {
 					// Load all functions
@@ -112,116 +114,144 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 				}
 
 				if (!functions || functions.length === 0) {
-					return reject("You need to specify either a function path or --all to test all functions");
+					return BbPromise.reject(new SError(
+							"You need to specify either a function path or --all to test all functions",
+							SError.errorCodes.INVALID_PROJECT_SERVERLESS
+					));
 				}
 
-				let testWriter = new JUnitWriter();
+				// Iterate all functions, execute their handler and
+				// write the results into a JUnit file...
+				let junitWriter = new JUnitWriter();
 				let count = 0, succeeded = 0, failed = 0;
-				BbPromise.each(functions, function(f) {
-					let funcTestSuite = testWriter.addTestsuite(f._config.sPath);
+				BbPromise.each(functions, function(functionData) {
+					let functionTestSuite = junitWriter.addTestsuite(functionData._config.sPath);
 					count++;
 
-					if (f.runtime === "nodejs") {
-						let handler = f.handler.split(".");
-						let component = f._config.component;
-						let handlerPath = path.join(_this.S.config.projectPath, component, handler[0]);
+					if (functionData.runtime === "nodejs") {
+						// Load function file & handler
+						let functionFile    = functionData.handler.split('/').pop().split('.')[0];
+						let functionHandler = functionData.handler.split('/').pop().split('.')[1];
+						let functionPath    = path.join(_this.S.config.projectPath, functionData._config.sPath);
+						functionFile        = path.join(functionPath, (functionFile + '.js'));
+
+						// Fire function
+						let eventFile     = (functionData.custom.test ? 
+								functionData.custom.test.event : false) || "event.json";
+						let functionEvent = SUtils.readAndParseJsonSync(path.join(functionPath, eventFile));
 
 						// TODO Should we skip a function that's explicitly specified via command line option?
-						if (f.custom.test && f.custom.test.skip) {
-							SCli.log("Skipping " + f._config.sPath);
-							funcTestSuite.setSkipped(true);
+						if (functionData.custom.test && functionData.custom.test.skip) {
+							SCli.log(`Skipping ${functionData._config.sPath}`);
+							functionTestSuite.addTestcase("skipped", functionData._config.sPath);
+							functionTestSuite.setSkipped(true);
 							return; // skip this function
 						}
 
-						// Load the handler code
-						let script;
-						try {
-							script = require(handlerPath);
-							if (!script[handler[1]]) {
-								let err = "Handler function " + f.handler + " not found";
-								return reject(err);
+						return new BbPromise(function(resolve) {
+							try {
+								// Load the handler code
+								functionHandler = require(functionFile)[functionHandler];
+								if (!functionHandler) {
+									let msg = `Handler function ${functionData.handler} not found`;
+									SCli.log(chalk.bold(msg));
+									evt.data.result.status   = 'error';
+									evt.data.result.response = msg;
+									return resolve();
+								}
+
+								// Okay, let's go and execute the handler
+								// We intercept all stdout from the function and dump
+								// it into our test results instead.
+								SCli.log(`Testing ${functionData._config.sPath}...`);
+								let testCase = functionTestSuite.addTestcase("should succeed", functionData._config.sPath);
+								let capturedText = "";
+								let unhookIntercept = intercept(function(txt) {
+									capturedText += txt;
+								});
+		
+								let startTime = Date.now();
+								functionHandler(functionEvent, context(functionData.name, function (err, result) {
+
+									let duration = (Date.now() - startTime) / 1000;
+									unhookIntercept(); // stop intercepting stdout
+
+									testCase.setSystemOut(capturedText);
+									testCase.setTime(duration);
+
+									// Show error
+									if (err) {
+										testCase.addFailure(err.toString(), "Failed");
+
+										// Done with errors.
+										SCli.log(chalk.bgRed.white(" ERROR ") + " " +
+												chalk.red(err.toString()));
+										failed++;
+									}
+									else if (duration > functionData.timeout) {
+										let msg = `Timeout of ${functionData.timeout} seconds exceeded`;
+										testCase.addFailure(msg, "Timeout");
+
+										SCli.log(chalk.bgMagenta.white(" TIMEOUT ") + " " + 
+												chalk.magenta(msg));
+										failed++;
+									}
+									else {
+										// Done.
+										SCli.log(chalk.green("Success!"));
+										succeeded++;
+									}
+
+									return resolve();
+								}));
 							}
-						}
-						catch (err) {
-							return reject(err);
-						}
+							catch (err) {
 
-						// Load the sample event (defaults to the 'event.json' in the function directory)
-						let event = {};
-						let eventFile = (f.custom.test ? f.custom.test.event : false) || "event.json";
-						let eventPath = path.join(f._config.fullPath, eventFile);
-						if (fs.statSync(eventPath).isFile())
-							event = require(eventPath);
+								SCli.log("-----------------");
 
-						// Okay, let's go and execute the handler
-						// We intercept all stdout from the function and dump
-						// it into our test results instead.
-						SCli.log("Testing " + f._config.sPath + "...");
-						let testCase = funcTestSuite.addTestcase("should succeed", f._config.sPath);
-						let capturedText = "";
-						let unhookIntercept = intercept(function(txt) {
-							capturedText += txt;
-						});
-
-						let startTime = Date.now();
-						let ctx = context();
-						script[handler[1]](event, ctx);
-
-						// Wait for the handler script to finish...
-						return ctx.Promise.then(function(result) {
-							unhookIntercept(); // stop intercepting stdout
-							let duration = (Date.now() - startTime) / 1000;
-
-							testCase.setTime(duration);
-							testCase.setSystemOut(capturedText);
-							if (duration > f.timeout) {
-								let msg = "Timeout of " + f.timeout + " seconds exceeded";
-								testCase.addFailure(msg, "Timeout");
-
-								SCli.log(chalk.bgMagenta.white(" TIMEOUT ") + " " + chalk.magenta(msg));
-								failed++;
+								SCli.log(chalk.bold("Failed to Run Handler - This Error Was Thrown:"));
+								SCli.log(err);
+								evt.data.result.status   = 'error';
+								evt.data.result.response = err.message;
+								return resolve();
 							}
-							else {
-								// Done.
-								SCli.log(chalk.green("Success!"));
-								succeeded++;
-							}
-						}).catch(function(err) {
-							unhookIntercept(); // stop intercepting stdout
-							let duration = (Date.now() - startTime) / 1000;
-
-							testCase.setTime(duration);
-							testCase.addFailure(err.toString(), "Failed");
-							testCase.setSystemOut(capturedText);
-
-							// Done with errors.
-							SCli.log(chalk.bgRed.white(" ERROR ") + " " +
-									chalk.red(err.toString()));
-							failed++;
 						});
 					}
 					else {
-						SCli.log("Skipping " + f._config.sPath);
-						funcTestSuite.setSkipped(true);
+						SCli.log("Skipping " + functionData._config.sPath);
+						functionTestSuite.setSkipped(true);
 					}
 				}).then(function() {
+
+					SCli.log("-----------------");
+
 					// All done. Print a summary and write the test results
-					SCli.log("Tests completed: " + chalk.green(String(succeeded) + " succeeded") + " / " +
+					SCli.log("Tests completed: " + 
+							chalk.green(String(succeeded) + " succeeded") + " / " +
 							chalk.red(String(failed) + " failed") + " / " + 
 							chalk.white(String(count - succeeded - failed) + " skipped"));
 
 					if (evt.options.out) {
 						// Write test results to file
-						let save = BbPromise.promisify(testWriter.save, {context: testWriter});
-						return save(evt.options.out).then(function() {
-							SCli.log("Test results written to " + evt.options.out);
+						return new BbPromise(function(resolve) {
+							junitWriter.save(evt.options.out, function() {
+								SCli.log("Test results written to " + evt.options.out);
+								resolve();
+							});
 						});
 					}
 				}).then(function() {
-					resolve(evt);
+					resolve();
 					process.exit(); // FIXME force exit
 				}).catch(function(err) {
-					reject(err);
+
+					SCli.log("-----------------");
+
+					SCli.log(chalk.bold("Failed to Run Tests - This Error Was Thrown:"));
+					SCli.log(err);
+					evt.data.result.status   = 'error';
+					evt.data.result.response = err.message;
+					return resolve();
 				});
 			});
 		}
@@ -229,6 +259,6 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 	}
 
 	// Export Plugin Class
-	return ServerlessPluginBoilerplate;
+	return ServerlessTestPlugin;
 
 };
