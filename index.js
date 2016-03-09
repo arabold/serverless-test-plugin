@@ -99,6 +99,9 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 
 			return new BbPromise(function (resolve, reject) {
 
+				// Set an environment variable the invoked functions can check for
+				process.env.SERVERLESS_TEST = true;
+
 				// Prepare result object
 				evt.data.result = { status: false };
 
@@ -252,7 +255,9 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 					evt.data.result.status   = 'error';
 					evt.data.result.response = err.message;
 					return resolve();
-				});
+				}).finally() {
+					process.env.SERVERLESS_TEST = undefined;
+				};
 			});
 		}
 

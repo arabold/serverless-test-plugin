@@ -64,3 +64,11 @@ Test all functions and output results into a JUnit compatible XML:
 serverless function test --all --out test_results/report.xml
 ```
 
+
+To detect whether your code runs in a test environment or not, check for the `SERVERLESS_TEST` environment variable:
+
+```
+if (process.env.SERVERLESS_TEST) {
+  console.log("This code runs as part of an intergration test.");
+}
+```
