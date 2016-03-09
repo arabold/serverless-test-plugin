@@ -255,9 +255,9 @@ module.exports = function(ServerlessPlugin, serverlessPath) { // Always pass in 
 					evt.data.result.status   = 'error';
 					evt.data.result.response = err.message;
 					return resolve();
-				}).finally() {
+				}).finally(function() {
 					process.env.SERVERLESS_TEST = undefined;
-				};
+				});
 			});
 		}
 
