@@ -18,7 +18,7 @@ The easiest example of running this plugin is
 serverless function test --all
 ```
 
-**Note:** Serverless *v0.1.4* or higher is required.
+**Note:** Serverless *v0.5.0* or higher is required.
 
 
 ###Configuration
@@ -45,30 +45,47 @@ Available options are
 ###Usage
 
 Test an individual function:
-
 ```
-serverless function test <component>/<module>/<function>
+serverless function test <function>
 ```
 
 
-Test all functions in the project:
+To test all functions in the current path, invoke the plugin without any function name:
+```
+serverless function test
+```
 
+
+To test all functions in the project specify the `--all` parameter:
 ```
 serverless function test --all
 ```
 
 
-Test all functions and output results into a JUnit compatible XML:
+You can also specify a stage and/or a region for your tests. If none is specified, the
+first stage and region defined in your `_meta` folder will be used:
+```
+serverless function test <function> --stage dev --region us-east-1
+```
 
+
+To test all functions and output results into a JUnit compatible XML, specify the
+`--out` parameter with a target file name:
 ```
 serverless function test --all --out test_results/report.xml
 ```
 
 
-To detect whether your code runs in a test environment or not, check for the `SERVERLESS_TEST` environment variable:
+
+Sometimes it is desirable to mock certain behavior in your code depending on whether it is running in a
+test automation script or on an actual server. For this reason the `serverless-test-plugin`
+introduces a dedicated environment variable `SERVERLESS_TEST`:
 
 ```
 if (process.env.SERVERLESS_TEST) {
-  console.log("This code runs as part of an intergration test.");
+  console.log("This code runs as part of an integration test.");
+}
+else {
+  console.log("This code does NOT run as part of an integration test..")
 }
 ```
