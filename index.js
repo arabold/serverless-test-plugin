@@ -182,15 +182,22 @@ module.exports = function(S) {
 						// Finally run the Lambda function...
 						let startTime = Date.now();
 						return functionData.run(stage, region, eventData)
-						.then(function() {
-
+						.then(function(result) {
 							let duration = (Date.now() - startTime) / 1000;
 							unhookIntercept(); // stop intercepting stdout
 
 							testCase.setSystemOut(capturedText);
 							testCase.setTime(duration);
 
-							if (duration > functionData.timeout) {
+							if (!result || result.status !== "success") {
+								let msg = result.error.toString();
+								testCase.addFailure(msg, "Failed");
+
+								SCli.log(chalk.bgRed.white(" ERROR ") + " " +
+										chalk.red(msg));
+								failed++;
+							}
+							else if (duration > functionData.timeout) {
 								let msg = `Timeout of ${functionData.timeout} seconds exceeded`;
 								testCase.addFailure(msg, "Timeout");
 
@@ -206,11 +213,13 @@ module.exports = function(S) {
 						})
 						.catch(function(err) {
 							unhookIntercept(); // stop intercepting stdout
-							testCase.addFailure(err.toString(), "Failed");
+
+							let msg = err.toString();
+							testCase.addFailure(msg, "Failed");
 
 							// Done with errors.
 							SCli.log(chalk.bgRed.white(" ERROR ") + " " +
-									chalk.red(err.toString()));
+									chalk.red(msg));
 							failed++;
 						});
 					}

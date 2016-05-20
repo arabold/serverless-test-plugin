@@ -21,7 +21,9 @@ serverless function test --all
 **Note:** Serverless *v0.5.0* or higher is required.
 
 
-###Configuration
+## Usage
+
+### Configuration
 
 This plugin can be configured on a function level by adding a `test` definition to the `custom`
 section in your `s-function.json`.
@@ -42,7 +44,7 @@ Available options are
 * `event` - string; name of the event JSON definition; defaults to `event.json`
 
 
-###Usage
+### Run Tests
 
 Test an individual function:
 ```
@@ -89,3 +91,30 @@ else {
   console.log("This code does NOT run as part of an integration test..")
 }
 ```
+
+
+## Releases
+
+### 0.2.1
+* Fixed an issue with the plugin not reporting error responses correctly.
+
+### 0.2.0
+* Support for Serverless 0.5.0 and higher.
+
+### 0.1.5
+* Fixed broken build. Sorry for that.
+
+### 0.1.4
+* Set an environment variable `SERVERLESS_TEST` the invoked functions can check for
+
+### 0.1.3
+* Cleanups
+
+### 0.1.2
+* Cleanups
+
+### 0.1.1
+* Capture `stdout` and `stderr` output of tests
+
+### 0.1.0
+* Initial Release.
