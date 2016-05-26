@@ -95,6 +95,10 @@ else {
 
 ## Releases
 
+### 0.2.2
+* Exit with error code 1 in case one or more tests fail. This should help integrating the
+  plugin in your automation/CI/CD workflows.
+
 ### 0.2.1
 * Fixed an issue with the plugin not reporting error responses correctly.
 

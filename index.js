@@ -259,7 +259,7 @@ module.exports = function(S) {
 				}
 			})
 			.then(function() {
-				process.exit(); // FIXME force exit
+				process.exit(failed > 0 ? 1 : 0); // FIXME force exit
 			})
 			.catch(function(err) {
 
