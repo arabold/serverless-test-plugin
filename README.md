@@ -95,6 +95,9 @@ else {
 
 ## Releases
 
+### 0.2.3
+* Properly time out a function call, e.g. in case the response callback is never invoked.
+
 ### 0.2.2
 * Exit with error code 1 in case one or more tests fail. This should help integrating the
   plugin in your automation/CI/CD workflows.

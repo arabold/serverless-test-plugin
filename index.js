@@ -147,7 +147,7 @@ module.exports = function(S) {
 			// write the results into a JUnit file...
 			const junitWriter = new JUnitWriter();
 			let count = 0, succeeded = 0, failed = 0;
-			return BbPromise.each(functions, function(functionData) {
+			return BbPromise.each(functions, (functionData) => {
 				let functionTestSuite = junitWriter.addTestsuite(functionData.name);
 				count++;
 
@@ -166,7 +166,7 @@ module.exports = function(S) {
 							functionData.custom.test.event : false) || 'event.json');
 					const eventData = S.utils.readFileSync(eventFile);
 
-					try {
+					return BbPromise.try(() => {
 						// We intercept all stdout from the function and dump
 						// it into our test results instead.
 						SCli.log(`Testing ${functionData.name}...`);
@@ -182,7 +182,8 @@ module.exports = function(S) {
 						// Finally run the Lambda function...
 						let startTime = Date.now();
 						return functionData.run(stage, region, eventData)
-						.then(function(result) {
+						.timeout(functionData.timeout * 1000)
+						.then((result) => {
 							let duration = (Date.now() - startTime) / 1000;
 							unhookIntercept(); // stop intercepting stdout
 
@@ -190,19 +191,17 @@ module.exports = function(S) {
 							testCase.setTime(duration);
 
 							if (!result || result.status !== "success") {
-								let msg = result.error.toString();
+								let msg;
+								if (result && result.error) {
+									msg = result.error.toString();
+								}
+								else {
+									msg = "xxxx";
+								}
 								testCase.addFailure(msg, "Failed");
 
 								SCli.log(chalk.bgRed.white(" ERROR ") + " " +
 										chalk.red(msg));
-								failed++;
-							}
-							else if (duration > functionData.timeout) {
-								let msg = `Timeout of ${functionData.timeout} seconds exceeded`;
-								testCase.addFailure(msg, "Timeout");
-
-								SCli.log(chalk.bgMagenta.white(" TIMEOUT ") + " " + 
-										chalk.magenta(msg));
 								failed++;
 							}
 							else {
@@ -211,7 +210,17 @@ module.exports = function(S) {
 								succeeded++;
 							}
 						})
-						.catch(function(err) {
+						.catch(BbPromise.TimeoutError, () => {
+							unhookIntercept(); // stop intercepting stdout
+
+							let msg = `Timeout of ${functionData.timeout} seconds exceeded`;
+							testCase.addFailure(msg, "Timeout");
+
+							SCli.log(chalk.bgMagenta.white(" TIMEOUT ") + " " + 
+									chalk.magenta(msg));
+							failed++;
+						})
+						.catch((err) => {
 							unhookIntercept(); // stop intercepting stdout
 
 							let msg = err.toString();
@@ -222,8 +231,8 @@ module.exports = function(S) {
 									chalk.red(msg));
 							failed++;
 						});
-					}
-					catch (err) {
+					})
+					.catch((err) => {
 
 						SCli.log("-----------------");
 
@@ -231,14 +240,14 @@ module.exports = function(S) {
 						SCli.log(err);
 						evt.data.result.status   = 'error';
 						evt.data.result.response = err.message;
-					}
+					});
 				}
 				else {
 					SCli.log("Skipping " + functionData.name);
 					functionTestSuite.setSkipped(true);
 				}
 			})
-			.then(function() {
+			.then(() => {
 
 				SCli.log("-----------------");
 
@@ -258,10 +267,10 @@ module.exports = function(S) {
 					});
 				}
 			})
-			.then(function() {
+			.then(() => {
 				process.exit(failed > 0 ? 1 : 0); // FIXME force exit
 			})
-			.catch(function(err) {
+			.catch((err) => {
 
 				SCli.log("-----------------");
 
@@ -270,7 +279,7 @@ module.exports = function(S) {
 				evt.data.result.status   = 'error';
 				evt.data.result.response = err.message;
 			})
-			.finally(function() {
+			.finally(() => {
 				process.env.SERVERLESS_TEST = undefined;
 			});
 		}
