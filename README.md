@@ -95,6 +95,11 @@ else {
 
 ## Releases
 
+### 0.2.4
+* New command line option `--dont-fail-on-error` which makes the plugin exit
+  with error code `0` even in case a test fails. This enables the same behavior as before the 
+  0.2.2 update.
+
 ### 0.2.3
 * Properly time out a function call, e.g. in case the response callback is never invoked.
 

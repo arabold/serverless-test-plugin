@@ -68,6 +68,9 @@ module.exports = function(S) {
 					option:      'region',
 					shortcut:    'r',
 					description: 'The region used to populate your templates. Default: the first region for the first stage found.'
+				},{
+					option:      'dont-fail-on-error',
+					description: 'Exit with error code 0 even if one or more test cases fail.'
 				}],
 				parameters: [{
 					parameter: 'names',
@@ -268,7 +271,8 @@ module.exports = function(S) {
 				}
 			})
 			.then(() => {
-				process.exit(failed > 0 ? 1 : 0); // FIXME force exit
+				var exitCode = (failed && !evt.options["dont-fail-on-error"]) ? 1 : 0;
+				process.exit(exitCode);
 			})
 			.catch((err) => {
 
